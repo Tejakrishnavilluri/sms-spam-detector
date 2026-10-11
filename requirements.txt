@@ -1,2 +1,169 @@
-pandas
-scikit-learn
+import re
+from pathlib import Path
+
+import joblib
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, classification_report, confusion_matrix
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+
+MODEL_PATH = Path("sms_spam_model.joblib")
+DATASET_PATH = Path("spam.csv")
+
+
+def clean_text(text):
+    """Normalize SMS text before vectorization."""
+    if pd.isna(text):
+        return ""
+
+    text = str(text).lower()
+    text = re.sub(r"\d+", " number ", text)
+    text = re.sub(r"[^a-z\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def load_data(path=DATASET_PATH):
+    """Read the SMS data and prepare it for training."""
+    if not Path(path).exists():
+        raise FileNotFoundError(f"Dataset not found: {path}. Please add spam.csv to the project folder.")
+
+    df = pd.read_csv(path, encoding="latin-1", engine="python")
+
+    if {"v1", "v2"}.issubset(df.columns):
+        df = df[["v1", "v2"]].rename(columns={"v1": "label", "v2": "message"})
+    elif {"label", "message"}.issubset(df.columns):
+        df = df[["label", "message"]]
+    else:
+        raise ValueError("Dataset must contain ('v1', 'v2') or ('label', 'message') columns.")
+
+    df = df.dropna(subset=["label", "message"]).copy()
+    df = df[df["label"].isin(["ham", "spam"])].copy()
+    df["message"] = df["message"].apply(clean_text)
+    df["target"] = df["label"].map({"ham": 0, "spam": 1})
+
+    return df
+
+
+def build_model():
+    """Create a strong text classification pipeline."""
+    return Pipeline(
+        steps=[
+            (
+                "tfidf",
+                TfidfVectorizer(
+                    lowercase=False,
+                    strip_accents="unicode",
+                    ngram_range=(1, 2),
+                    min_df=2,
+                    max_df=0.95,
+                    sublinear_tf=True,
+                ),
+            ),
+            (
+                "classifier",
+                LogisticRegression(
+                    max_iter=2000,
+                    class_weight="balanced",
+                    solver="liblinear",
+                    random_state=42,
+                ),
+            ),
+        ]
+    )
+
+
+def train_and_evaluate(df):
+    """Train the model, print evaluation metrics, and save it."""
+    X = df["message"]
+    y = df["target"]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=0.2,
+        random_state=42,
+        stratify=y,
+    )
+
+    model = build_model()
+    model.fit(X_train, y_train)
+
+    predictions = model.predict(X_test)
+
+    print("\nDataset label distribution:")
+    print(df["label"].value_counts())
+
+    print("\nAccuracy:", round(accuracy_score(y_test, predictions), 4))
+    print("Balanced Accuracy:", round(balanced_accuracy_score(y_test, predictions), 4))
+    print("\nClassification Report:")
+    print(classification_report(y_test, predictions, target_names=["ham", "spam"]))
+    print("\nConfusion Matrix:")
+    print(confusion_matrix(y_test, predictions))
+
+    joblib.dump(model, MODEL_PATH)
+    print(f"\nModel saved to: {MODEL_PATH}")
+
+    return model
+
+
+def predict_message(model, text):
+    """Predict if a message is ham or spam."""
+    cleaned = clean_text(text)
+    pred = model.predict([cleaned])[0]
+    prob = model.predict_proba([cleaned])[0][1]
+    label = "SPAM" if pred == 1 else "HAM"
+    return label, float(prob)
+
+
+def interactive_check(model):
+    """Allow manual SMS checks in a loop."""
+    print("\nType a message to classify. Press 'q' to quit.")
+
+    while True:
+        text = input("SMS: ").strip()
+        if text.lower() in {"q", "quit", "exit"}:
+            print("Exiting...\n")
+            break
+
+        if not text:
+            print("Please enter a message.")
+            continue
+
+        label, prob = predict_message(model, text)
+        print(f"Prediction: {label} | Spam probability: {prob:.2f}\n")
+
+
+def main():
+    print("SMS Spam Detector")
+    print("Loading dataset...")
+
+    try:
+        df = load_data(DATASET_PATH)
+    except FileNotFoundError as exc:
+        print(exc)
+        print("Download the spam.csv file into this folder and run the script again.")
+        return
+
+    model = train_and_evaluate(df)
+
+    sample_messages = [
+        "Congratulations! You have won a free prize. Click now to claim your reward!",
+        "Hey, are we still meeting for lunch tomorrow?",
+        "URGENT! Your account has been suspended. Verify your bank details immediately.",
+        "Thanks for the update. I’ll call you after work.",
+    ]
+
+    print("\nSample predictions:")
+    for message in sample_messages:
+        label, prob = predict_message(model, message)
+        print(f"Message: {message}")
+        print(f"Result: {label} | Spam probability: {prob:.2f}\n")
+
+    interactive_check(model)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,3 +1,54 @@
-__pycache__/
-.venv/
-*.pyc
+# SMS Spam Detector
+
+This project builds a better SMS spam classifier using text preprocessing and a trained machine learning pipeline.
+
+## What it does
+- Loads the SMS spam dataset (`spam.csv`)
+- Cleans and normalizes text messages
+- Uses TF-IDF vectorization + Logistic Regression
+- Trains and evaluates the model on a holdout test set
+- Saves the trained model as `sms_spam_model.joblib`
+- Allows you to test custom SMS messages interactively
+
+## Features
+- Better text cleaning for noisy SMS input
+- Balanced class handling
+- Accuracy and balanced accuracy metrics
+- User-driven prediction mode
+- Save/load support for reuse in future scripts
+
+## Setup
+
+1. Create and activate a virtual environment (optional but recommended):
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate   # macOS/Linux
+   .venv\Scripts\activate      # Windows
+   ```
+
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Add your dataset file in the project folder as `spam.csv`.
+
+4. Run the program:
+   ```bash
+   python sms_spam_detector.py
+   ```
+
+## Dataset format
+The script supports either of these column layouts:
+- `v1` = label, `v2` = message
+- `label` and `message`
+
+## Example usage
+The script will:
+- train the model on the dataset
+- print evaluation metrics
+- show predictions for sample messages
+- ask for your own SMS input until you type `q`
+
+## Notes
+This version is more robust than the basic starter script and works better for real-world SMS text patterns.
